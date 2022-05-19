@@ -16,6 +16,7 @@ import * as fsPromise from 'fs/promises';
 import ffmpegBins from 'ffmpeg-ffprobe-static';
 import ffmpeg from 'fluent-ffmpeg';
 import os from 'os';
+import winston from 'winston';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
 
@@ -41,6 +42,22 @@ ffmpeg.setFfprobePath(ffprobePath);
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const tmpDir = os.tmpdir();
+
+const mainLogger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  defaultMeta: { service: 'main' },
+  transports: [
+    new winston.transports.File({
+      filename: `${tmpDir}/vodon_${process.env.NODE_ENV}.log`,
+    }),
+  ],
+});
+
+mainLogger.log({
+  level: 'info',
+  message: 'Starting up',
+});
 
 export default class AppUpdater {
   constructor() {
@@ -128,6 +145,43 @@ const createWindow = async () => {
   mainWindow.webContents.setWindowOpenHandler((edata) => {
     shell.openExternal(edata.url);
     return { action: 'deny' };
+  });
+
+  /**
+   * Handle redirects from Keyclock
+   */
+  const {
+    session: { webRequest },
+  } = mainWindow.webContents;
+
+  const filter = {
+    urls: ['http://localhost/keycloak-redirect*'],
+  };
+
+  webRequest.onBeforeRequest(filter, async ({ url }: { url: string }) => {
+    if (mainWindow === null) {
+      return;
+    }
+
+    const hash = url.slice(url.indexOf('#'));
+    const htmlPath = resolveHtmlPath(`index.html`);
+
+    mainLogger.log({
+      level: 'info',
+      message: `Processing auth request: ${htmlPath}, ${hash}`,
+    });
+
+    try {
+      await mainWindow.loadURL(`${htmlPath}${hash}`);
+    } catch (e) {
+      setTimeout(() => {
+        if (mainWindow === null) {
+          return;
+        }
+
+        mainWindow.reload();
+      }, 2000);
+    }
   });
 
   // Remove this if your app does not use auto updates
@@ -264,7 +318,7 @@ ipcMain.handle(
   }
 );
 
-// allow local videos
+// allow local file system videos
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'file',

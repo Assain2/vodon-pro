@@ -1,5 +1,5 @@
 import { render } from 'react-dom';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 import App from './pages/App';
 import ReviewVideos from './pages/ReviewVideos';
@@ -8,7 +8,7 @@ import About from './pages/About';
 import Settings from './pages/Settings';
 
 render(
-  <HashRouter>
+  <MemoryRouter>
     <Routes>
       <Route path="/" element={<App />}>
         <Route index element={<SetupVideos />} />
@@ -17,6 +17,6 @@ render(
         <Route path="/about" element={<About />} />
       </Route>
     </Routes>
-  </HashRouter>,
+  </MemoryRouter>,
   document.getElementById('root')
 );

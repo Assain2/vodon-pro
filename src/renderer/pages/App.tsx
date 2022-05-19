@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import * as React from 'react';
 import { Global, css } from '@emotion/react';
 
 import {
@@ -39,25 +39,72 @@ import useSettingsStore from '../services/stores/settings';
 import useVideoStore, {
   createVideosFromPaths,
 } from '../services/stores/videos';
+import useSessionStore from '../services/stores/session';
 import theme from '../services/theme';
+import { create as createKeycloakClient } from '../services/auth';
 import garet from '../assets/fonts/Garet-Heavy.otf';
 
 import NavLink from '../components/NavLink/NavLink';
+import Session from '../components/Session/Session';
+
+import type { UserInfo } from '../services/stores/session';
+
+const loaderStyles = css`
+  width: 100vw;
+  height: 100vh;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  p {
+    font-family: sans-serif;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1rem;
+    margin: 1rem 0 0 0;
+  }
+`;
 
 export default function App() {
   const addVideo = useVideoStore((state) => state.addVideo);
   const clearVideos = useVideoStore((state) => state.clearVideos);
+  const setKeyclockClient = useSessionStore((state) => state.setKeyclockClient);
+  const setUserInfo = useSessionStore((state) => state.setUserInfo);
+
+  const keycloakClient = useSessionStore((state) => state.keycloakClient);
 
   const arrowKeyJumpDistance = useSettingsStore(
     (state) => state.arrowKeyJumpDistance
   );
 
-  const [version, setVersion] = useState<string | null>(null);
+  const [version, setVersion] = React.useState<string | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const { pathname } = useLocation();
 
-  useEffect(() => {
+  React.useEffect(() => {
+    const fetchData = async () => {
+      const client = createKeycloakClient();
+
+      await client.init({
+        onLoad: 'check-sso',
+        redirectUri: 'http://localhost/keycloak-redirect',
+      });
+
+      if (client.authenticated) {
+        const fetchedUserInfo = (await client.loadUserInfo()) as UserInfo;
+        setUserInfo(fetchedUserInfo);
+      }
+
+      setKeyclockClient(client);
+    };
+
+    fetchData().catch((error) => {
+      throw error;
+    });
+  }, [setKeyclockClient, setUserInfo]);
+
+  React.useEffect(() => {
     // Fetch the version of the app
     window.app
       .getVersion()
@@ -85,6 +132,20 @@ export default function App() {
         throw e;
       });
   }, [addVideo, clearVideos]);
+
+  if (keycloakClient === null) {
+    return (
+      <Box css={loaderStyles}>
+        <Box textAlign="center">
+          <div className="lds-ripple">
+            <div />
+            <div />
+          </div>
+          <p>Loading...</p>
+        </Box>
+      </Box>
+    );
+  }
 
   const showHelp = pathname === '/' || pathname === '/review';
 
@@ -228,6 +289,9 @@ export default function App() {
               <NavLink to="/about">About</NavLink>
             </Flex>
             <Spacer />
+            <Box mr="4">
+              <Session />
+            </Box>
             {showHelp === true && (
               <Button leftIcon={<HelpIcon />} onClick={() => onOpen()}>
                 Help
